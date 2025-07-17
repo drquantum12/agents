@@ -2,7 +2,7 @@ from langgraph.graph import StateGraph, START, END
 from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 from typing import TypedDict
-from prompts import AI_TUTOR_PROMPT, QUIZ_GENERATOR_PROMPT, GRADER_PROMPT, INTENT_EXTRACTOR_PROMPT, TEACHER_AGENT_PROMPT, GENERAL_FALLBACK_PROMPT
+from prompts import AI_TUTOR_PROMPT, QUIZ_GENERATOR_PROMPT, SUMMARIZE_HISTORY_PROMPT, GRADER_PROMPT, INTENT_EXTRACTOR_PROMPT, TEACHER_AGENT_PROMPT, GENERAL_FALLBACK_PROMPT
 from llm import LLM
 import os
 from utility.custom_libs import CustomMongoDBChatMessageHistory
@@ -33,7 +33,7 @@ def get_chat_history(session_id: str):
 
 def orchestrator_node(state: AgentState, config: RunnableConfig):
     print("--- Orchestrator Node ---")
-    prompt = INTENT_EXTRACTOR_PROMPT.invoke({"text": state.get("question", "")})
+    prompt = INTENT_EXTRACTOR_PROMPT.invoke({"text": state.get("question")})
     intent = llm.invoke(prompt).content.strip()
     state["intent"] = intent  # Store the intent in the state
     print(f"Extracted intent: {intent}")
@@ -68,8 +68,23 @@ def answering_node(state: AgentState, config: RunnableConfig):
     state["stage"] = "quiz_generation"
     return state
 
-def quiz_generation_node(state: AgentState):
-    quiz_prompt = QUIZ_GENERATOR_PROMPT.invoke({"text": state["full_explanation"]})
+def quiz_generation_node(state: AgentState, config: RunnableConfig):
+    if not state.get("full_explanation"):
+        print("No full explanation found, summarizing history instead.")
+        chat_history = get_chat_history(config["configurable"]["session_id"])
+        state["messages"] = list(chat_history.messages) + state.get("messages", [])
+        history_msgs = ""
+        for msg in state.get("messages", [])[:-10:]:
+            if isinstance(msg, HumanMessage):
+                history_msgs += f"User: {msg.content}\n"
+            elif isinstance(msg, AIMessage):
+                history_msgs += f"AI: {msg.content}\n"
+        summarization_prompt = SUMMARIZE_HISTORY_PROMPT.invoke({"history": history_msgs})
+        summarization = llm.invoke(summarization_prompt).content.strip()
+        state["full_explanation"] = summarization
+        print(f"Summarized history: {summarization}")
+
+    quiz_prompt = QUIZ_GENERATOR_PROMPT.invoke({"text": state.get("full_explanation", "No explanation provided")})
     content = llm.invoke(quiz_prompt).content.strip()
     state["quiz_question"] = content
     # print(f"final state: {state}")

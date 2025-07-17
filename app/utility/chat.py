@@ -117,7 +117,8 @@ async def websocket_endpoint(websocket: WebSocket):
     while True:
         try:
             data = await websocket.receive_json()
-            usr_msg = data.get("payload", "")
+            usr_msg = data.get("payload")
+            print(f"Received message: {usr_msg}")
 
             state = AgentState(
                 question=usr_msg,

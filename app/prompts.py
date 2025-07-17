@@ -54,6 +54,9 @@ INTENT_EXTRACTOR_PROMPT = ChatPromptTemplate.from_messages([
     ("human", "Test my knowledge of World War II."),
     ("assistant", "quiz"),
 
+    ("human", "please generate questions based on my past learning"),
+    ("assistant", "quiz"),
+
     ("human", "What was the last question I asked you?"),
     ("assistant", "general"),
 
@@ -91,6 +94,7 @@ Answer the student in a friendly, encouraging tone.
 QUIZ_GENERATOR_PROMPT = ChatPromptTemplate.from_messages([
     ("system", 
      "You are a question generator. Your task is to create ONE multiple-choice question based on the provided text. "
+     "If user asks for a quiz based on past learning, generate a question using history messages. "
      "Your output must strictly follow the Markdown format below:\n\n"
      "### Question:\n<your-question>\n\n"
      "**A.** <option A>\n"
@@ -101,6 +105,7 @@ QUIZ_GENERATOR_PROMPT = ChatPromptTemplate.from_messages([
      "**Explanation:** <brief explanation of why the correct answer is correct>\n\n"
      "**Difficulty:** <easy/medium/hard>\n\n"
      "Only generate content in this format. Do not add any extra commentary or output."),
+
     
     ("human", "In physics, a shadow is the dark area on a surface caused by blocking light from shining on it, typically due to an object's presence or shape."),
     
@@ -121,6 +126,19 @@ What is typically responsible for creating shadows?
 
     ("human", '''{text}'''),
 ])
+
+SUMMARIZE_HISTORY_PROMPT = ChatPromptTemplate.from_messages([
+    ("system",
+     "You are a helpful assistant that summarizes educational conversations for quiz creation. "
+     "Your goal is to extract the key factual or conceptual content from the provided chat history. "
+     "Ignore small talk, greetings, or non-educational content.\n\n"
+     "Summarize the history in a way that captures important definitions, explanations, facts, or concepts, "
+     "which can later be used to generate a multiple-choice question.\n\n"
+     "Output must be a clear paragraph in respective language."),
+     
+    ("human", "{history}"),
+])
+
 
 GRADER_PROMPT = ChatPromptTemplate.from_messages([
     ("system", "You are a grading generator. Your task is to grade the student's answer based on the provided question and answer.\
