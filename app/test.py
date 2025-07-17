@@ -7,53 +7,59 @@ from langchain_core.runnables import RunnableConfig
 import os
 from typing import TypedDict
 from llm import LLM
+from db_utility.mongo_db import mongo_db
 
-llm = LLM().get_llm()
+user_collection = mongo_db["users"]
 
-class AgentState(TypedDict):
-    messages: list[BaseMessage]
+# llm = LLM().get_llm()
 
-def get_chat_history(session_id: str):
-    return CustomMongoDBChatMessageHistory(
-        session_id=session_id,
-        connection_string=os.getenv("MONGODB_CONNECTION_STRING"),
-        database_name="neurosattva",
-        collection_name="sessions",
-        max_recent_messages=100
-    )
+# class AgentState(TypedDict):
+#     messages: list[BaseMessage]
+
+# def get_chat_history(session_id: str):
+#     return CustomMongoDBChatMessageHistory(
+#         session_id=session_id,
+#         connection_string=os.getenv("MONGODB_CONNECTION_STRING"),
+#         database_name="neurosattva",
+#         collection_name="sessions",
+#         max_recent_messages=100
+#     )
 
 
-chat_history = get_chat_history("test_session")
+# chat_history = get_chat_history("test_session")
 
-def call_model(state: AgentState, config: RunnableConfig):
-    if "configurable" not in config or "session_id" not in config["configurable"]:
-        raise ValueError("Session ID is required in the configuration.")
+# def call_model(state: AgentState, config: RunnableConfig):
+#     if "configurable" not in config or "session_id" not in config["configurable"]:
+#         raise ValueError("Session ID is required in the configuration.")
     
-    chat_history = get_chat_history(config["configurable"]["session_id"])
-    messages = list(chat_history.messages) + state.get("messages", [])
-    ai_message = llm.invoke(messages)
-    chat_history.add_ai_message(ai_message.content)
-    state["messages"] = messages + [ai_message]
-    return {"messages": ai_message}
+#     chat_history = get_chat_history(config["configurable"]["session_id"])
+#     messages = list(chat_history.messages) + state.get("messages", [])
+#     ai_message = llm.invoke(messages)
+#     chat_history.add_ai_message(ai_message.content)
+#     state["messages"] = messages + [ai_message]
+#     return {"messages": ai_message}
 
 
-builder = StateGraph(AgentState)
-builder.add_edge(START, "model")
-builder.add_node("model", call_model)
+# builder = StateGraph(AgentState)
+# builder.add_edge(START, "model")
+# builder.add_node("model", call_model)
 
-graph = builder.compile()
+# graph = builder.compile()
 
 
 
 if __name__ == "__main__":
-    config = {"configurable": {"session_id": "test_session"}}
+    user_id = "4w0gfL17n5ZFQnJDaZW11rMRsxe2"
+    user = user_collection.find_one({"_id": user_id})
+    print(user["_id"])
+    # config = {"configurable": {"session_id": "test_session"}}
     
-    input_message = HumanMessage(content="What does the word 'neurosattva' mean?")
-    chat_history.add_user_message(input_message.content)
+    # input_message = HumanMessage(content="What does the word 'neurosattva' mean?")
+    # chat_history.add_user_message(input_message.content)
 
-    for chunk, metadata in graph.stream({"messages": [input_message]}, config=config, stream_mode="messages"):
-        token = chunk.content if hasattr(chunk, 'content') else str(chunk)
-        print(token, end='', flush=True)
+    # for chunk, metadata in graph.stream({"messages": [input_message]}, config=config, stream_mode="messages"):
+    #     token = chunk.content if hasattr(chunk, 'content') else str(chunk)
+    #     print(token, end='', flush=True)
 
     # for chunk in agent.stream(state,
     #                                     config={"configurable":{"session_id": "test_session"}}):

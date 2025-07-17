@@ -17,9 +17,14 @@ def extract_mcq(md_text):
     explanation_match = re.search(r'\*\*Explanation:\*\*\s*(.+)', md_text, re.DOTALL)
     explanation = explanation_match.group(1).strip() if explanation_match else None
 
+    # Extract difficulty level
+    difficulty_match = re.search(r'\*\*Difficulty:\*\*\s*(easy|medium|hard)', md_text, re.IGNORECASE)
+    difficulty = difficulty_match.group(1).strip() if difficulty_match else None
+
     return {
         "question": question,
         "options": options,
         "correct_answer": correct_answer,
-        "explanation": explanation
+        "explanation": explanation,
+        "difficulty": difficulty
     }

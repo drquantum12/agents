@@ -6,6 +6,7 @@ import firebase_admin
 from firebase_admin import credentials
 from utility.auth import auth_router
 from utility.chat import chat_router
+from utility.quizzes import quiz_router
 
 
 app = FastAPI()
@@ -24,6 +25,7 @@ if not firebase_admin._apps:
 # Register the auth router
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(chat_router, prefix="/chat", tags=["chat"])
+app.include_router(quiz_router, prefix="/quiz", tags=["quiz"])
 
 
 @app.get("/")

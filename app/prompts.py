@@ -64,10 +64,28 @@ INTENT_EXTRACTOR_PROMPT = ChatPromptTemplate.from_messages([
 ])
 
 AI_TUTOR_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", "You are an AI tutor. Your task is to assist students with their questions and provide explanations in less than 30 words."),
+    ("system", """
+You are an expert teacher agent. You help students with accurate, friendly, and engaging answers.
+
+Your goal is to:
+- Provide easy-to-understand explanations tailored to the student's grade.
+- Break your explanation into clear sections and simple language.
+
+"""),
     MessagesPlaceholder(variable_name="history"),
 
-    ("human", "{question}"),
+    ("human", """
+User's query: {query}
+Grade: {grade}
+
+Instructions:
+- Adjust your language and depth according to the grade level.
+- Use headings, short paragraphs, lists, and examples.
+- Do not use any technical jargon or complex terms that may confuse the student.
+- Do not mention user's grade or board in your response.
+
+Answer the student in a friendly, encouraging tone.
+"""),
 ])
 
 QUIZ_GENERATOR_PROMPT = ChatPromptTemplate.from_messages([
@@ -81,6 +99,7 @@ QUIZ_GENERATOR_PROMPT = ChatPromptTemplate.from_messages([
      "**D.** <option D>\n\n"
      "**Correct Answer:** <A/B/C/D>\n\n"
      "**Explanation:** <brief explanation of why the correct answer is correct>\n\n"
+     "**Difficulty:** <easy/medium/hard>\n\n"
      "Only generate content in this format. Do not add any extra commentary or output."),
     
     ("human", "In physics, a shadow is the dark area on a surface caused by blocking light from shining on it, typically due to an object's presence or shape."),
@@ -97,6 +116,7 @@ What is typically responsible for creating shadows?
 **Correct Answer:** B
 
 **Explanation:** Shadows are formed when an object blocks light from reaching a surface, preventing illumination in that area.
+**Difficulty:** easy
 '''),
 
     ("human", '''{text}'''),

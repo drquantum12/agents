@@ -73,7 +73,7 @@ async def create_user(user: UserProfileCreate,
 
     try:
         mongodb_user_collection.insert_one(user_data)
-        return {"message": "User registered successfully", "user_id": user_data}
+        return {"message": "User registered successfully", "user_id": user_data["_id"]}
     
     except Exception as e:
         raise HTTPException(
@@ -99,7 +99,7 @@ async def login_email_password(
             detail="User profile not found, Please complete registration",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return {"message": "Login successful", "user": user_doc}
+    return {"message": "Login successful", "user": user_doc["_id"]}
 
 
 
@@ -131,7 +131,7 @@ async def google_sign_in(
     user_doc = mongodb_user_collection.find_one({"_id": user_id})
 
     if not user_doc:
-        user_data = UserSchema(
+        user_doc = UserSchema(
         _id=current_firebase_user.get("uid"),
         name=current_firebase_user.get("name"),
         email=current_firebase_user.get("email"),
@@ -140,8 +140,8 @@ async def google_sign_in(
         conversation_ids=[],
         quiz_ids=[]
     )
-        mongodb_user_collection.insert_one(user_data)
-    return {"message": "Sign-in successful", "user": user_doc}
+        mongodb_user_collection.insert_one(user_doc)
+    return {"message": "Sign-in successful", "user": user_doc["_id"]}
 
 
 

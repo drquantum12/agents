@@ -12,6 +12,7 @@ llm = LLM().get_llm()
 
 class AgentState(TypedDict, total=False):
     question: str
+    user_grade: str  # Added to track the user's grade
     student_answer: str
     full_explanation: str
     messages: list[BaseMessage]
@@ -59,7 +60,7 @@ def answering_node(state: AgentState, config: RunnableConfig):
         elif isinstance(msg, AIMessage):
             history_msgs.append(("assistant", msg.content))
     # passing only the last 10 messages to the AI tutor prompt
-    question = AI_TUTOR_PROMPT.invoke({"history": history_msgs[-10:], "question": state.get("question", "")})
+    question = AI_TUTOR_PROMPT.invoke({"history": history_msgs[-10:], "query": state.get("question", ""), "grade": state.get("user_grade", "10th")})
     content = llm.invoke(question).content.strip()
     chat_history.add_user_message(state.get("question"))
     chat_history.add_ai_message(content)

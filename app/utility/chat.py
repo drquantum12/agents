@@ -35,15 +35,16 @@ def user_get_or_create_conversation_id(user_id: str):
         )
     
     conversation_ids = user_doc.get("conversation_ids", [])
+    user_grade = user_doc.get("grade", "10th")  # Default to 10th grade if not specified
     if not conversation_ids:
         new_conversation_id = str(uuid4())
         mongodb_user_collection.update_one(
             {"_id": user_id},
             {"$push": {"conversation_ids": {"id": new_conversation_id, "created_at": datetime.now()}}}
         )
-        return new_conversation_id
-    
-    return conversation_ids[0]["id"]  # Return the first conversation ID if exists
+        return new_conversation_id, user_grade
+
+    return conversation_ids[0]["id"], user_grade  # Return the first conversation ID and user grade if exists
 
 
 
@@ -101,7 +102,7 @@ def get_conversation(conversation_id: str, current_user: dict = Depends(get_curr
 async def websocket_endpoint(websocket: WebSocket):
 
     user_id = websocket.query_params.get("user_id")
-    conversation_id = user_get_or_create_conversation_id(user_id)
+    conversation_id, user_grade = user_get_or_create_conversation_id(user_id)
 
     if not user_id or not conversation_id:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Invalid user_id or conversation_id")
@@ -120,6 +121,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
             state = AgentState(
                 question=usr_msg,
+                user_grade=user_grade,
                 student_answer="",
                 full_explanation="",
                 messages=[],
