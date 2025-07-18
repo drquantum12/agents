@@ -82,7 +82,6 @@ def quiz_generation_node(state: AgentState, config: RunnableConfig):
         summarization_prompt = SUMMARIZE_HISTORY_PROMPT.invoke({"history": history_msgs})
         summarization = llm.invoke(summarization_prompt).content.strip()
         state["full_explanation"] = summarization
-        print(f"Summarized history: {summarization}")
 
     quiz_prompt = QUIZ_GENERATOR_PROMPT.invoke({"text": state.get("full_explanation", "No explanation provided")})
     content = llm.invoke(quiz_prompt).content.strip()
