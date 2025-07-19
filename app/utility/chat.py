@@ -60,6 +60,8 @@ def chat(message: MessageSchema, current_user: dict = Depends(get_current_user_f
         {"_id": current_user["uid"]},
         {"$push": {"conversation_ids": {"id": new_conversation_id, "created_at": datetime.now()}}}
     )
+
+    
     return {"message": "New conversation created", "conversation_id": new_conversation_id}
 
 @chat_router.get("/conversations")
@@ -83,19 +85,50 @@ def get_conversations(current_user: dict = Depends(get_current_user_from_firebas
             detail=f"Error retrieving conversations: {str(e)}",
         )
 
+# implementing lazy loading using limit and offset
 @chat_router.get("/conversation/{conversation_id}")
-def get_conversation(conversation_id: str, current_user: dict = Depends(get_current_user_from_firebase_token)):
+def get_paginated_conversation(conversation_id: str, limit: int = 10, offset: int = 0, current_user: dict = Depends(get_current_user_from_firebase_token)):
+    # Step 1: Get count only
     """
-    Get a specific conversation by ID.
+    Example response:
+    {
+        "conversation_id": "12345",
+        "messages": [
+            {"role": "human", "content": "Hello"},
+            {"role": "assistant", "content": "Hi there!"}
+        ],
+        "total_messages": 100
+    }
     """
-    conversation_doc = mongodb_session_collection.find_one({"_id": conversation_id})
+    pipeline = [
+        {"$match": {"_id": conversation_id}},
+        {"$project": {"count": {"$size": "$messages"}}}
+    ]
+    result = list(mongodb_session_collection.aggregate(pipeline))
 
-    if not conversation_doc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Conversation not found",
-        )
-    return {"conversation_id": conversation_id, "messages": conversation_doc}
+    if not result:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    total_messages = result[0]["count"]
+
+    # Step 2: Compute proper slice
+    start = max(total_messages - offset - limit, 0)
+    slice_count = min(limit, total_messages - offset)
+
+    # Step 3: Fetch just the required messages
+    conversation_doc = mongodb_session_collection.find_one(
+        {"_id": conversation_id},
+        {"_id": 1, "messages": {"$slice": [start, slice_count]}}
+    )
+
+    messages = conversation_doc.get("messages", [])
+    messages.reverse()  # Reverse to get latest messages first
+
+    return {
+        "conversation_id": conversation_id,
+        "messages": messages,
+        "total_messages": total_messages
+    }
 
 
 @chat_router.websocket("/ws/ai-tutor")

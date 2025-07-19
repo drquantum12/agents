@@ -24,8 +24,8 @@ if not firebase_admin._apps:
 
 # Register the auth router
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
-app.include_router(chat_router, prefix="/chat", tags=["chat"])
-app.include_router(quiz_router, prefix="/quiz", tags=["quiz"])
+app.include_router(chat_router, prefix="/api/v1/chat", tags=["chat"])
+app.include_router(quiz_router, prefix="/api/v1/quiz", tags=["quiz"])
 
 
 @app.get("/")

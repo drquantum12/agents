@@ -1,10 +1,11 @@
 from db_utility.mongo_db import UserSchema
 from firebase_admin import  auth
-from fastapi import APIRouter, HTTPException, Header, Depends, status
+from fastapi import APIRouter, HTTPException, Header, Depends, status, Body
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 from db_utility.mongo_db import mongo_db
+
 class UserLoginPayload(BaseModel):
     userId: str
 
@@ -12,6 +13,13 @@ class UserProfileCreate(BaseModel):
     userId: str
     name: str
     email: str
+    photo_url: Optional[str] = None
+    grade: Optional[str] = "10th"  # Default to 10th grade if not specified
+    board: Optional[str] = None  # Optional field for user boards
+
+class UserProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
     photo_url: Optional[str] = None
     grade: Optional[str] = "10th"  # Default to 10th grade if not specified
     board: Optional[str] = None  # Optional field for user boards
@@ -77,22 +85,22 @@ async def create_user(user: UserProfileCreate,
         mongodb_user_collection.insert_one(user_data)
         resp = {
             "message": "User created successfully",
-            "user": {
-                key : value for key, value in user_data.dict().items() if key != "quiz_ids"  # Exclude quiz_ids from response
-            }
+            "user": user_data
         }
         return resp
 
     except Exception as e:
+        print(f"Error during user creation: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create user",
         )
     
-@auth_router.post("/login-email-password")
-async def login_email_password(
+@auth_router.post("/login")
+async def login(
     payload: UserLoginPayload,
-    current_firebase_user: dict = Depends(get_current_user_from_firebase_token)):
+    current_firebase_user: dict = Depends(get_current_user_from_firebase_token)
+    ):
     firebase_uid = current_firebase_user.get("uid")
     if payload.userId and payload.userId != firebase_uid:
         raise HTTPException(
@@ -100,7 +108,10 @@ async def login_email_password(
             detail="User ID does not match the authenticated user",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    user_doc = mongodb_user_collection.find_one({"_id": payload.userId})
+    user_doc = mongodb_user_collection.find_one(
+        {"_id": payload.userId},
+        {"quiz_ids": 0}  # Exclude quiz_ids from response
+        )
     if not user_doc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 
@@ -109,9 +120,7 @@ async def login_email_password(
         )
     resp = {
         "message": "Login successful",
-        "user": {
-            key: value for key, value in user_doc.items() if key != "quiz_ids"  # Exclude quiz_ids from response
-        }
+        "user": user_doc
     }
     return resp
 
@@ -163,43 +172,70 @@ async def google_sign_in(
     }
     return resp
 
-
-@auth_router.post("/update-user-profile")
-async def update_user_profile(
-    user: UserProfileCreate,
+# get user profile
+@auth_router.get("/user/{userId}")
+async def get_user_profile(
+    userId: str,
     current_firebase_user: dict = Depends(get_current_user_from_firebase_token)):
     """
-    This endpoint updates the user profile.
+    This endpoint retrieves the user profile.
     It requires a valid Firebase ID token in the Authorization header.
-    user: {
-        "userId": "user id",
-        "name": "User Name",
-        "email": "user@example.com",
-        "grade": "10th",
-        "board": "CBSE"
-        }
     """
-    if current_firebase_user["uid"] != user.userId:
+    if current_firebase_user["uid"] != userId:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, 
             detail="User ID does not match the authenticated user",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    update_data = {key: value for key, value in user.items() if value is not None}
-    
-    result = mongodb_user_collection.update_one(
-        {"_id": user.userId},
-        {"$set": update_data}
+    user_doc = mongodb_user_collection.find_one(
+        {"_id": userId},
+        {"quiz_ids": 0, "conversation_ids": 0}  # Exclude quiz_ids and conversation_ids from response
     )
-    
-    if result.modified_count == 0:
+
+    if not user_doc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 
-            detail="User profile not found or no changes made",
+            detail="User profile not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    resp = {
+        "message": "User profile retrieved successfully",
+        "user": user_doc
+    }
+    return resp
+
+
+@auth_router.patch("/user/{userId}")
+async def update_user_profile(
+    userId: str,
+    user: UserProfileUpdate = Body(...),
+    current_firebase_user: dict = Depends(get_current_user_from_firebase_token)
+):
+    """
+    This endpoint updates the user profile.
+    Requires valid Firebase ID token in Authorization header.
+    """
+    if current_firebase_user["uid"] != userId:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="User ID does not match the authenticated user",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
+    update_data = user.model_dump(exclude_none=True)
+    
+    result = mongodb_user_collection.update_one(
+        {"_id": userId},
+        {"$set": update_data}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="User not found",
+        )
+
     return {"message": "User profile updated successfully", "user": update_data}
 
 

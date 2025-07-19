@@ -16,8 +16,8 @@ class UserSchema(TypedDict):
     email: str
     photo_url: Optional[str]
     created_at: datetime
-    conversation_ids: list[idInfo]
-    quiz_ids: list[idInfo]
+    conversation_ids: Optional[list[idInfo]]
+    quiz_ids: Optional[list[idInfo]]
 
 class MessageSchema(TypedDict):
     _id: str
