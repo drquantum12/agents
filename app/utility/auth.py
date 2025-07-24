@@ -20,6 +20,7 @@ class UserProfileCreate(BaseModel):
 class UserProfileUpdate(BaseModel):
     name: Optional[str] = None
     email: Optional[str] = None
+    personalized_response: Optional[bool] = None
     photo_url: Optional[str] = None
     grade: Optional[str] = "10th"  # Default to 10th grade if not specified
     board: Optional[str] = None  # Optional field for user boards
@@ -229,6 +230,12 @@ async def update_user_profile(
         {"_id": userId},
         {"$set": update_data}
     )
+    user_doc = mongodb_user_collection.find_one({"_id": userId}, {"quiz_ids": 0, "conversation_ids": 0})  # Exclude quiz_ids and conversation_ids from response
+
+    response = {
+        "message": "User profile updated successfully",
+        "user": user_doc
+    }
     
     if result.matched_count == 0:
         raise HTTPException(
@@ -236,7 +243,7 @@ async def update_user_profile(
             detail="User not found",
         )
 
-    return {"message": "User profile updated successfully", "user": update_data}
+    return response
 
 
 

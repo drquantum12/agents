@@ -4,15 +4,17 @@ from pydantic import BaseModel
 from utility.auth import get_current_user_from_firebase_token
 from uuid import uuid4
 from db_utility.mongo_db import mongo_db
-from core_agents import build_agent, AgentState
+from core_agents import build_agent, AgentState, generate_topic
 from langchain_core.messages import AIMessageChunk
 from utility.preprocessing import extract_mcq
 from fastapi import WebSocket
 from utility.quizzes import save_quiz
-import os
+from db_utility.vector_db import VectorDB
+import os, json, time
+
+vector_db = VectorDB()
 
 class MessageSchema(BaseModel):
-    role: str
     content: str
 
 mongodb_user_collection = mongo_db["users"]
@@ -23,46 +25,22 @@ chat_router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 
-def user_get_or_create_conversation_id(user_id: str):
-    """
-    Helper function to get or create a conversation ID for a user.
-    """
-    user_doc = mongodb_user_collection.find_one({"_id": user_id})
-    if not user_doc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
-    
-    conversation_ids = user_doc.get("conversation_ids", [])
-    user_grade = user_doc.get("grade", "10th")  # Default to 10th grade if not specified
-    if not conversation_ids:
-        new_conversation_id = str(uuid4())
-        mongodb_user_collection.update_one(
-            {"_id": user_id},
-            {"$push": {"conversation_ids": {"id": new_conversation_id, "created_at": datetime.now()}}}
-        )
-        return new_conversation_id, user_grade
-
-    return conversation_ids[0]["id"], user_grade  # Return the first conversation ID and user grade if exists
-
-
-
 @chat_router.post("/")
 def chat(message: MessageSchema, current_user: dict = Depends(get_current_user_from_firebase_token)):
 
     # adding new coversation id to the list of conversation ids for the user
 
     new_conversation_id = str(uuid4())
+    conversation_topic = generate_topic(message.content)
     
     # adding new conversation id to conversation_ids array in user document
     mongodb_user_collection.update_one(
         {"_id": current_user["uid"]},
-        {"$push": {"conversation_ids": {"id": new_conversation_id, "created_at": datetime.now()}}}
+        {"$push": {"conversation_ids": {"id": new_conversation_id, "topic": conversation_topic, "created_at": datetime.now()}}}
     )
 
     
-    return {"message": "New conversation created", "conversation_id": new_conversation_id}
+    return {"message": "New conversation created", "conversation_id": new_conversation_id, "topic": conversation_topic}
 
 @chat_router.get("/conversations")
 def get_conversations(current_user: dict = Depends(get_current_user_from_firebase_token)):
@@ -135,14 +113,14 @@ def get_paginated_conversation(conversation_id: str, limit: int = 10, offset: in
 async def websocket_endpoint(websocket: WebSocket):
 
     user_id = websocket.query_params.get("user_id")
-    conversation_id, user_grade = user_get_or_create_conversation_id(user_id)
+    conversation_id = websocket.query_params.get("conversation_id")
+    # conversation_id = user_get_or_create_conversation_id(user_id)
 
     if not user_id or not conversation_id:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Invalid user_id or conversation_id")
         return
     
     await websocket.accept()
-    await websocket.send_json({"sender": "AI", "text": "Welcome to the AI Tutor!"})
 
     agent = build_agent()
     config = {"configurable": {"session_id": conversation_id}}
@@ -151,27 +129,42 @@ async def websocket_endpoint(websocket: WebSocket):
         try:
             data = await websocket.receive_json()
             usr_msg = data.get("payload")
-            print(f"Received message: {usr_msg}")
+            personalized_response = data.get("personalized_response", False)
+
+            context, source_list = vector_db.get_similar_documents(usr_msg, top_k=3)
 
             state = AgentState(
                 question=usr_msg,
-                user_grade=user_grade,
-                student_answer="",
+                context=context,
+                grade=data.get("grade", ""),
+                board=data.get("board", ""),
+                personalized_response=personalized_response,
                 full_explanation="",
                 messages=[],
                 stage="start",
-                retry_count=0,
-                student_answers=[],
-                hints_given=[],
                 intent=""
             )
+
             generated_quiz = ""
             last_node = None
+            # updating user preference for personalized response
+            pu = mongodb_user_collection.update_one(
+                    {"_id": user_id},
+                    {"$set": {"personalized_response": personalized_response}}
+                )
+            
+            print(f"personalized response updated: {pu}")
+
+            if personalized_response and source_list:
+                await websocket.send_json({"sender": "ai",
+                                           "text": source_list,
+                                           "from_agent": "response_source"})
 
             for chunk, metadata in agent.stream(state, config=config, stream_mode="messages"):
+                
                 if isinstance(chunk, AIMessageChunk):
                     current_node = metadata.get("langgraph_node")
-
+                        
                     if current_node == "answering_node":
                         if last_node != current_node:
                             print("\n--- Answering Node ---\n")
@@ -217,4 +210,30 @@ async def websocket_endpoint(websocket: WebSocket):
             break
 
 
+# a test function to simulate model response
+@chat_router.websocket("/ws/ai-tutor/test")
+async def websocket_test_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    while True:
+        try:
+            data = await websocket.receive_json()
+            usr_msg = data.get("payload")
+            personalized_response = data.get("personalized_response", False)
+            if personalized_response:
+                with open("assets/sample_ai_response_personalized.json", "r") as f:
+                    sample_response = json.load(f)
+            else:
+            # reading sample saved model response from a file
+                with open("assets/sample_ai_response.json", "r") as f:
+                    sample_response = json.load(f)
+            
+            # iterating over the sample response and sending it as a stream
+            for chunk in sample_response:
+                await websocket.send_json({"sender": "ai",
+                                           "text": chunk["text"],
+                                           "type": chunk.get("type", "stream"),
+                                           "from_agent": chunk["from_agent"]})
+        except Exception as e:
+            print(f"Websocket error: {e}")
+            break
 

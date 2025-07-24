@@ -2,7 +2,7 @@ from langgraph.graph import StateGraph, START, END
 from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 from typing import TypedDict
-from prompts import AI_TUTOR_PROMPT, QUIZ_GENERATOR_PROMPT, SUMMARIZE_HISTORY_PROMPT, GRADER_PROMPT, INTENT_EXTRACTOR_PROMPT, TEACHER_AGENT_PROMPT, GENERAL_FALLBACK_PROMPT
+from prompts import AI_TUTOR_PROMPT, QUIZ_GENERATOR_PROMPT, SUMMARIZE_HISTORY_PROMPT, AI_TUTOR_PROMPT_PERSONALIZED, INTENT_EXTRACTOR_PROMPT, TOPIC_GENERATOR_PROMPT, GENERAL_FALLBACK_PROMPT
 from llm import LLM
 import os
 from utility.custom_libs import CustomMongoDBChatMessageHistory
@@ -10,17 +10,17 @@ from langchain_core.runnables import RunnableConfig
 
 llm = LLM().get_llm()
 
+
 class AgentState(TypedDict, total=False):
     question: str
-    user_grade: str  # Added to track the user's grade
-    student_answer: str
+    context: str
+    grade: str
+    board: str
+    personalized_response: bool
     full_explanation: str
     messages: list[BaseMessage]
     stage: str
-    retry_count: int
-    student_answers: list[str]
-    hints_given: list[str]
-    intent: str  # Added to track the intent of the student
+    intent: str
 
 def get_chat_history(session_id: str):
     return CustomMongoDBChatMessageHistory(
@@ -30,6 +30,12 @@ def get_chat_history(session_id: str):
         collection_name="sessions",
         max_recent_messages=100
     )
+
+def generate_topic(text: str):
+    prompt = TOPIC_GENERATOR_PROMPT.invoke({"text": text})
+    topic = llm.invoke(prompt).content.strip()
+    return topic
+
 
 def orchestrator_node(state: AgentState, config: RunnableConfig):
     print("--- Orchestrator Node ---")
@@ -54,13 +60,24 @@ def answering_node(state: AgentState, config: RunnableConfig):
     chat_history = get_chat_history(config["configurable"]["session_id"])
     state["messages"] = list(chat_history.messages) + state.get("messages", [])
     history_msgs = []
+    
     for msg in state.get("messages", []):
         if isinstance(msg, HumanMessage):
             history_msgs.append(("human", msg.content))
         elif isinstance(msg, AIMessage):
             history_msgs.append(("assistant", msg.content))
     # passing only the last 10 messages to the AI tutor prompt
-    question = AI_TUTOR_PROMPT.invoke({"history": history_msgs[-10:], "query": state.get("question", ""), "grade": state.get("user_grade", "10th")})
+    # If personalized response is enabled, use the personalized prompt
+    if state.get("personalized_response", False):
+        question = AI_TUTOR_PROMPT_PERSONALIZED.invoke({
+            "history": history_msgs[-10:],
+            "query": state.get("question"),
+            "grade": state.get("grade", "10"),
+            "context": state.get("context", "")
+        })
+    else:
+        question = AI_TUTOR_PROMPT.invoke({"history": history_msgs[-10:], "query": state.get("question")})
+
     content = llm.invoke(question).content.strip()
     chat_history.add_user_message(state.get("question"))
     chat_history.add_ai_message(content)
