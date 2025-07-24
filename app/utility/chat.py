@@ -220,11 +220,11 @@ async def websocket_test_endpoint(websocket: WebSocket):
             usr_msg = data.get("payload")
             personalized_response = data.get("personalized_response", False)
             if personalized_response:
-                with open("assets/sample_ai_response_personalized.json", "r") as f:
+                with open("app/assets/sample_ai_response_personalized.json", "r") as f:
                     sample_response = json.load(f)
             else:
             # reading sample saved model response from a file
-                with open("assets/sample_ai_response.json", "r") as f:
+                with open("app/assets/sample_ai_response.json", "r") as f:
                     sample_response = json.load(f)
             
             # iterating over the sample response and sending it as a stream
