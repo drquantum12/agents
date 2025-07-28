@@ -21,10 +21,15 @@ def extract_mcq(md_text):
     difficulty_match = re.search(r'\*\*Difficulty:\*\*\s*(easy|medium|hard)', md_text, re.IGNORECASE)
     difficulty = difficulty_match.group(1).strip() if difficulty_match else None
 
+    # Extract subject (if present)
+    subject_match = re.search(r'\*\*Subject:\*\*\s*(\w+)', md_text, re.IGNORECASE)
+    subject = subject_match.group(1).strip() if subject_match else None
+
     return {
         "question": question,
         "options": options,
         "correct_answer": correct_answer,
         "explanation": explanation,
-        "difficulty": difficulty
+        "difficulty": difficulty,
+        "subject": subject
     }

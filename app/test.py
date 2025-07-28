@@ -1,85 +1,69 @@
-from utility.custom_libs import CustomMongoDBChatMessageHistory
-from langgraph.graph import StateGraph, START, END
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
-from pymongo import MongoClient
-from langchain_core.runnables import RunnableConfig
-import os
-from typing import TypedDict
-from llm import LLM
+# from db_utility.vector_db import VectorDB
+
+# vector_db = VectorDB()
 from db_utility.mongo_db import mongo_db
+from datetime import datetime
+from utility.quizzes import QuizResult, difficulty_level_score_mapping
 
-user_collection = mongo_db["users"]
+users_collection = mongo_db["users"]
+quiz_collection = mongo_db["quizzes"]
+user_id = "ptLFqq0N9JTyYL7lkAqhB1YSFj32"
 
-# llm = LLM().get_llm()
+# quiz_result = {"quiz_id": "fa4613a7-dbef-470f-8021-8c51f793cdb2", "is_correct": False, "selected_option": "C", "subject": "Science", "difficulty": "easy"}
 
-# class AgentState(TypedDict):
-#     messages: list[BaseMessage]
+def user_metrics(user_id: str):
+    """
+    Return : overall accuracy, average accuracy, average score, subject-wise accuracy,
+    subject-wise average score, quizzes taken count, subject-wise quizzes taken count
+    """
+    try:
+        quizzes_taken = users_collection.find_one({"_id": user_id}, {"quiz_ids": 1})
+        if not quizzes_taken or not quizzes_taken.get("quiz_ids", []):
+            return {"message": "No quizzes taken by the user."}
+        quiz_ids = quizzes_taken["quiz_ids"]
+        total_quizzes = len(quiz_ids)
+        total_score = sum(quiz["score"] for quiz in quiz_ids if "score" in quiz)
 
-# def get_chat_history(session_id: str):
-#     return CustomMongoDBChatMessageHistory(
-#         session_id=session_id,
-#         connection_string=os.getenv("MONGODB_CONNECTION_STRING"),
-#         database_name="neurosattva",
-#         collection_name="sessions",
-#         max_recent_messages=100
-#     )
+        overall_accuracy = sum(quiz["is_correct"] for quiz in quiz_ids) / total_quizzes * 100
+        average_score = total_score / total_quizzes if total_quizzes > 0 else 0
 
-
-# chat_history = get_chat_history("test_session")
-
-# def call_model(state: AgentState, config: RunnableConfig):
-#     if "configurable" not in config or "session_id" not in config["configurable"]:
-#         raise ValueError("Session ID is required in the configuration.")
-    
-#     chat_history = get_chat_history(config["configurable"]["session_id"])
-#     messages = list(chat_history.messages) + state.get("messages", [])
-#     ai_message = llm.invoke(messages)
-#     chat_history.add_ai_message(ai_message.content)
-#     state["messages"] = messages + [ai_message]
-#     return {"messages": ai_message}
-
-
-# builder = StateGraph(AgentState)
-# builder.add_edge(START, "model")
-# builder.add_node("model", call_model)
-
-# graph = builder.compile()
-
+        # get subject and difficulty for quiz_ids from quizzes collection
+        quizzes = quiz_collection.find({"_id": {"$in": [quiz["_id"] for quiz in quiz_ids]}}, {"subject": 1, "difficulty": 1})
+        subject_difficulty_map = {quiz["_id"]: (quiz["subject"], quiz["difficulty"]) for quiz in quizzes}
+        # Calculate subject-wise accuracy, average score and difficulty-wise accuracy and average score
+        subject_wise_data = {}
+        difficulty_wise_data = {}
+        for quiz in quiz_ids:
+            subject, difficulty = subject_difficulty_map.get(quiz["_id"], ("Unknown", "easy"))
+            if subject not in subject_wise_data:
+                subject_wise_data[subject] = {"total": 0, "correct": 0, "score": 0}
+            if difficulty not in difficulty_wise_data:
+                difficulty_wise_data[difficulty] = {"total": 0, "correct": 0, "score": 0}
+            subject_wise_data[subject]["total"] += 1
+            subject_wise_data[subject]["correct"] += quiz.get("is_correct", 0)
+            subject_wise_data[subject]["score"] += quiz.get("score", 0)
+            difficulty_wise_data[difficulty]["total"] += 1
+            difficulty_wise_data[difficulty]["correct"] += quiz.get("is_correct", 0)
+            difficulty_wise_data[difficulty]["score"] += quiz.get("score", 0)
+        subject_wise_accuracy = {subj: data["correct"] / data["total"] * 100 for subj, data in subject_wise_data.items()}
+        subject_wise_average_score = {subj: data["score"] / data["total"] for subj, data in subject_wise_data.items()}
+        difficulty_wise_accuracy = {diff: data["correct"] / data["total"] * 100 for diff, data in difficulty_wise_data.items()}
+        difficulty_wise_average_score = {diff: data["score"] / data["total"] for diff, data in difficulty_wise_data.items()}
+        return {
+            "overall_accuracy": overall_accuracy,
+            "average_accuracy": overall_accuracy,
+            "average_score": average_score,
+            "subject_wise_accuracy": subject_wise_accuracy,
+            "subject_wise_average_score": subject_wise_average_score,
+            "quizzes_taken_count": total_quizzes,
+            "subject_wise_quizzes_taken_count": {subj: data["total"] for subj, data in subject_wise_data.items()},
+            "difficulty_wise_accuracy": difficulty_wise_accuracy,
+            "difficulty_wise_average_score": difficulty_wise_average_score,
+            "difficulty_wise_quizzes_taken_count": {diff: data["total"] for diff, data in difficulty_wise_data.items()},
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 if __name__ == "__main__":
-    user_id = "4w0gfL17n5ZFQnJDaZW11rMRsxe2"
-    user = user_collection.find_one({"_id": user_id})
-    print(user["_id"])
-    # config = {"configurable": {"session_id": "test_session"}}
-    
-    # input_message = HumanMessage(content="What does the word 'neurosattva' mean?")
-    # chat_history.add_user_message(input_message.content)
-
-    # for chunk, metadata in graph.stream({"messages": [input_message]}, config=config, stream_mode="messages"):
-    #     token = chunk.content if hasattr(chunk, 'content') else str(chunk)
-    #     print(token, end='', flush=True)
-
-    # for chunk in agent.stream(state,
-    #                                     config={"configurable":{"session_id": "test_session"}}):
-    #     token = chunk.content if hasattr(chunk, 'content') else str(chunk)
-    #     print(token, end='', flush=True)
-
-
-
-
-    # Example usage
-    # chat_history.add_user_message("Hello, how are you?")
-    # chat_history.add_ai_message("I'm doing well, thank you!")
-    # chat_history.add_user_message("Hi, My name is Arjun Singh Tomar and I am 27 years old.")
-    
-    # Retrieve all messages
-    # messages = chat_history.messages
-    # print(messages)
-    # msgs = chat_history.find({"SessionId": "test_session"})
-    # for msg in msgs:    
-    #     print(msg.todict())
-    
-    # Clear the chat history
-    # chat_history.clear()
+    basic_metrics = user_metrics(user_id)

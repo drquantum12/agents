@@ -14,6 +14,7 @@ VECTOR_DIMENSION = int(os.getenv('MILVUS_VECTOR_DIMENSION', 768))
 class VectorDB:
     def __init__(self):
         self.client = MilvusClient(uri=MILVUS_URI, token=MILVUS_TOKEN)
+        self.similarity_score_threshold = 0.7  # Example threshold for similarity score
 
     def get_similar_documents(self, text, top_k=3):
         """
@@ -36,7 +37,7 @@ class VectorDB:
                 }
             for result in results[0]:
                 metadata = result["entity"].get("metadata_json", {})
-                if metadata:
+                if metadata and result["distance"] >= self.similarity_score_threshold:
                     context_for_llm["content"].append(metadata.get("content", ""))
                     context_for_llm["source"].append(f"{metadata.get('board')} - {metadata.get('grade')} - {metadata.get('subject')} - {metadata.get('chapter')} - {metadata.get('subheading')}")
             return "\n".join(context_for_llm["content"]), context_for_llm["source"]
