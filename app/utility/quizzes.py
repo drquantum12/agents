@@ -28,10 +28,10 @@ quiz_router = APIRouter(
 
 quiz_collection = mongo_db["quizzes"]
 users_collection = mongo_db["users"]
-quiz_performance_collection = mongo_db["quiz_performance"]
+quiz_submissions_collection = mongo_db["quiz_submissions"]
 
 
-def save_quiz(quiz_data: dict, user_id: str) -> str:
+def save_quiz(quiz_data: dict) -> str:
     """
     Save a quiz to the MongoDB collection.
     
@@ -43,66 +43,55 @@ def save_quiz(quiz_data: dict, user_id: str) -> str:
 
     result = quiz_collection.insert_one(quiz_data)
 
-     # adding quiz ID to user's quiz_ids array
-    users_collection.update_one(
-        {"_id": user_id},
-        {"$push": {"quiz_ids": {"_id": quiz_data["_id"]}}}
-    )
     if not result.acknowledged:
         raise Exception("Failed to save quiz to the database")
     return quiz_data
 
 @quiz_router.post("/save-user-quiz-result")
-async def save_user_quiz_result(quiz_result: dict, user: str = Depends(get_current_user_from_firebase_token)):
-    """
-    Save the user's quiz result.
-    quiz_result : {
-        "quiz_id": str,
-        "is_correct": bool,
-        "selected_option: str,
-        "difficulty": str,
-        "subject": str
-    }
-    """
+async def save_user_quiz_result(quiz_result: dict, user: dict = Depends(get_current_user_from_firebase_token)):
     try:
-        # Validate and process the quiz result
-        validated_result = QuizResult(**quiz_result, user_id=user["user_id"], responded_at=datetime.now())
-        if validated_result["is_correct"]:
-            validated_result["score"] = difficulty_level_score_mapping.get(validated_result.get("difficulty", "easy"), 1)
-        else:   
-            validated_result["score"] = 0
+        # Validate + build plain dict
+        validated = QuizResult(**quiz_result, user_id=user["user_id"], responded_at=datetime.utcnow())
+        doc = validated.model_dump() if hasattr(validated, "model_dump") else dict(validated)
 
-        user_id = validated_result["user_id"]
-        quiz_id = validated_result["quiz_id"]
-        update_result = users_collection.update_one(
+        # compute score
+        doc["score"] = difficulty_level_score_mapping.get(doc.get("difficulty", "easy"), 1) if doc.get("is_correct") else 0
+
+        user_id = doc["user_id"]
+        quiz_id = doc["quiz_id"]
+
+        # Upsert on (user_id, quiz_id)
+        result = quiz_submissions_collection.update_one(
+            {"user_id": user_id, "quiz_id": quiz_id},
             {
-                "_id": user_id,
-                "quiz_ids._id": quiz_id
+                "$set": {
+                    "is_correct": doc["is_correct"],
+                    "selected_option": doc.get("selected_option"),
+                    "score": doc["score"],
+                    "difficulty": doc.get("difficulty"),
+                    "subject": doc.get("subject"),
+                    "responded_at": doc["responded_at"],
+                },
+                "$setOnInsert": {
+                    "user_id": user_id,
+                    "quiz_id": quiz_id,
+                    "created_at": datetime.now(),
+                },
             },
-            {"$set": {"quiz_ids.$[quiz].is_correct": validated_result["is_correct"],
-                      "quiz_ids.$[quiz].selected_option": validated_result["selected_option"],
-                      "quiz_ids.$[quiz].score": validated_result["score"],
-                      "quiz_ids.$[quiz].responded_at": validated_result["responded_at"]
-                      }},
-            array_filters=[{"quiz._id": quiz_id}]
+            upsert=True,
         )
 
-        # if no quiz matched, push new quiz_id document
-        if update_result.matched_count == 0:
-            users_collection.update_one(
-                {"_id": user_id},
-                {"$push": {"quiz_ids": {
-                    "_id": quiz_id,
-                    "is_correct": validated_result["is_correct"],
-                    "selected_option": validated_result["selected_option"],
-                    "score": validated_result["score"],
-                    "responded_at": validated_result["responded_at"]
-                }}}
-            )
+        # Update user's last submission time after successful upsert
+        users_collection.update_one(
+            {"_id": user_id},
+            {"$set": {"last_quiz_submission_time": datetime.now()}}
+        )
 
-        # update student basic metrics after quiz response
+        # Recompute metrics after DB is updated
         updateStudentBasicMetricInDB(user_id)
 
-        return {"message": "Quiz result saved successfully", "quiz_id": quiz_id}
+        status = "created" if result.upserted_id is not None else "updated"
+        return {"message": f"Quiz result {status} successfully", "quiz_id": quiz_id}
+
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))

@@ -196,7 +196,7 @@ async def websocket_endpoint(websocket: WebSocket):
             if generated_quiz:
                 print(f"\nGenerated Quiz: {generated_quiz}\n")
                 # extracted_quiz = extract_mcq(generated_quiz)
-                extracted_quiz = save_quiz(extract_mcq(generated_quiz), user_id)
+                extracted_quiz = save_quiz(extract_mcq(generated_quiz))
                 print(f"\nExtracted Quiz: {extracted_quiz}\n")
                 extracted_quiz["created_at"] = extracted_quiz["created_at"].isoformat()
                 # print(f"\nQuiz question generated: {extracted_quiz}\n")
