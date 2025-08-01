@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Header, Depends, status
+from fastapi import APIRouter, HTTPException, Header, Depends, status, Query
 from datetime import datetime
 from pydantic import BaseModel
 from utility.auth import get_current_user_from_firebase_token
@@ -20,6 +20,7 @@ class MessageSchema(BaseModel):
 mongodb_user_collection = mongo_db["users"]
 mongodb_session_collection = mongo_db["sessions"]
 mongodb_quiz_collection = mongo_db["quizzes"]
+mongodb_conversations_collection = mongo_db["conversations"]
 
 chat_router = APIRouter(
     responses={404: {"description": "Not found"}},
@@ -28,35 +29,69 @@ chat_router = APIRouter(
 @chat_router.post("/")
 def chat(message: MessageSchema, current_user: dict = Depends(get_current_user_from_firebase_token)):
 
-    # adding new coversation id to the list of conversation ids for the user
+    try:
+        # adding new coversation id to the list of conversation ids for the user
 
-    new_conversation_id = str(uuid4())
-    conversation_topic = generate_topic(message.content)
+        new_conversation_id = str(uuid4())
+        conversation_topic = generate_topic(message.content)
+        
+        # adding new conversation id to conversation_ids array in user document
+        # mongodb_user_collection.update_one(
+        #     {"_id": current_user["uid"]},
+        #     {"$push": {"conversation_ids": {"id": new_conversation_id, "topic": conversation_topic, "created_at": datetime.now()}}}
+        # )
+
     
-    # adding new conversation id to conversation_ids array in user document
-    mongodb_user_collection.update_one(
-        {"_id": current_user["uid"]},
-        {"$push": {"conversation_ids": {"id": new_conversation_id, "topic": conversation_topic, "created_at": datetime.now()}}}
-    )
 
+        mongodb_conversations_collection.insert_one({
+            "_id": new_conversation_id,
+            "user_id": current_user["uid"],
+            "topic": conversation_topic,
+            "created_at": datetime.now()
+        })
+
+        return {"message": "New conversation created", "conversation_id": new_conversation_id, "topic": conversation_topic}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error creating conversation: {str(e)}",
+        )
     
-    return {"message": "New conversation created", "conversation_id": new_conversation_id, "topic": conversation_topic}
-
 @chat_router.get("/conversations")
-def get_conversations(current_user: dict = Depends(get_current_user_from_firebase_token)):
+def get_conversations(limit: int = Query(10, ge=1),
+                    offset: int = Query(0, ge=0),
+                       current_user: dict = Depends(get_current_user_from_firebase_token)):
     """
     Get all conversations for the current user.
     """
     try:
-        user_doc = mongodb_user_collection.find_one({"_id": current_user["uid"]})
-        if not user_doc:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found",
-            )
+        query = {"user_id": current_user["uid"]}
+        total = mongodb_conversations_collection.count_documents(query)
 
-        conversation_ids = user_doc.get("conversation_ids", [])
-        return {"conversation_ids": conversation_ids}
+        cursor = mongodb_conversations_collection.find(query, {"_id": 1, "topic": 1, "created_at": 1}).sort("created_at", -1).skip(offset).limit(limit)
+        conversations = [
+            {
+                "conversation_id": str(doc["_id"]),
+                "topic": doc["topic"],
+                "created_at": doc["created_at"].isoformat()
+            }
+            for doc in cursor
+        ]
+        # user_doc = mongodb_user_collection.find_one({"_id": current_user["uid"]})
+        # if not user_doc:
+        #     raise HTTPException(
+        #         status_code=status.HTTP_404_NOT_FOUND,
+        #         detail="User not found",
+        #     )
+
+        # # conversation_ids = user_doc.get("conversation_ids", [])
+        # # sorting conversations by created_at in descending order
+        # conversation_ids = sorted(
+        #     user_doc.get("conversation_ids", []),
+        #     key=lambda x: x["created_at"],
+        #     reverse=True
+        # )
+        return {"conversation_ids": conversations, "total": total}
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -131,11 +166,14 @@ async def websocket_endpoint(websocket: WebSocket):
             usr_msg = data.get("payload")
             personalized_response = data.get("personalized_response", False)
 
-            context, source_list = vector_db.get_similar_documents(usr_msg, top_k=3)
+            print(f"Received message: {usr_msg}, personalized_response: {personalized_response}")
+
+            if personalized_response:
+                context, source_list = vector_db.get_similar_documents(usr_msg, top_k=3)
 
             state = AgentState(
                 question=usr_msg,
-                context=context,
+                context=context if personalized_response else "",
                 grade=data.get("grade", ""),
                 board=data.get("board", ""),
                 personalized_response=personalized_response,
@@ -147,13 +185,6 @@ async def websocket_endpoint(websocket: WebSocket):
 
             generated_quiz = ""
             last_node = None
-            # updating user preference for personalized response
-            pu = mongodb_user_collection.update_one(
-                    {"_id": user_id},
-                    {"$set": {"personalized_response": personalized_response}}
-                )
-            
-            print(f"personalized response updated: {pu}")
 
             if personalized_response and source_list:
                 await websocket.send_json({"sender": "ai",
