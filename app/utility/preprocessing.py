@@ -22,7 +22,7 @@ def extract_mcq(md_text):
     difficulty = difficulty_match.group(1).strip() if difficulty_match else None
 
     # Extract subject (if present)
-    subject_match = re.search(r'\*\*Subject:\*\*\s*(\w+)', md_text, re.IGNORECASE)
+    subject_match = re.search(r'\*\*Subject:\*\*\s*([^\n]+)', md_text, re.IGNORECASE)
     subject = subject_match.group(1).strip() if subject_match else None
 
     return {

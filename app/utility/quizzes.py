@@ -17,9 +17,9 @@ class QuizResult(TypedDict):
     responded_at: datetime
 
 difficulty_level_score_mapping = {
-    "easy": 1,
-    "medium": 2,
-    "hard": 3
+    "easy": 10,
+    "medium": 20,
+    "hard": 30
 }
 
 quiz_router = APIRouter(

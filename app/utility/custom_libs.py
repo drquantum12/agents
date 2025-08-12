@@ -29,34 +29,64 @@ class CustomMongoDBChatMessageHistory(BaseChatMessageHistory):
     def add_user_message(self, message: str) -> None:
         self._append_message(HumanMessage(content=message))
 
-    def add_ai_message(self, message: str) -> None:
-        self._append_message(AIMessage(content=message))
+    def add_ai_message(self, message: str, sources: list[str]=None, image_links: list[dict]=None) -> None:
+        self._append_message(AIMessage(content=message), sources=sources, image_links=image_links)
 
-    def _append_message(self, message: BaseMessage) -> None:
-        self.collection.update_one(
-            {"_id": self.session_id},
-            {"$push": {"messages": self._message_to_dict(message)}}
-        )
+    def _append_message(self, message: BaseMessage, sources: list[str] = None, image_links: list[dict] = None) -> None:
+        if message.type == "ai":
+            self.collection.update_one(
+                {"_id": self.session_id},
+                {"$push": {"messages": self._message_to_dict(message, sources=sources, image_links=image_links)}}
+            )
+        else:
+            self.collection.update_one(
+                {"_id": self.session_id},
+                {"$push": {"messages": self._message_to_dict(message)}}
+            )
 
     def clear(self) -> None:
         self.collection.update_one({"_id": self.session_id}, {"$set": {"messages": []}})
 
-    def _message_to_dict(self, message: BaseMessage) -> dict:
-        return {
-            "type": message.type,
-            "data": {
-                "content": message.content
-            },
-            "timestamp": datetime.now()
-        }
+    def _message_to_dict(self, message: BaseMessage, sources: list[str] = None, image_links: list[dict] = None) -> dict:
+        if message.type == "ai":
+            if sources:
+                return {
+                    "type": message.type,
+                    "data": {
+                        "content": message.content,
+                        "sources": sources,
+                        "image_links": image_links if image_links else []
+                    },
+                    "timestamp": datetime.now()
+                }
+            else:
+                return {
+                    "type": message.type,
+                    "data": {
+                        "content": message.content,
+                        "image_links": image_links
+                    },
+                    "timestamp": datetime.now()
+                }
+        else:
+            return {
+                "type": message.type,
+                "data": {
+                    "content": message.content
+                },
+                "timestamp": datetime.now()
+            }
 
     def _dict_to_message(self, data: dict) -> BaseMessage:
         msg_type = data["type"]
         content = data["data"]["content"]
+        sources = data["data"].get("sources", [])
+        image_links = data["data"].get("image_links", [])
+
         if msg_type == "human":
-            return HumanMessage(content=content)
+            return {"role": "human", "content": content}
         elif msg_type == "ai":
-            return AIMessage(content=content)
+            return {"role": "assistant", "content": content, "sources": sources, "image_links": image_links}
         else:
             raise ValueError(f"Unsupported message type: {msg_type}")
         

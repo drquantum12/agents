@@ -2,11 +2,12 @@ from langgraph.graph import StateGraph, START, END
 from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 from typing import TypedDict
-from prompts import AI_TUTOR_PROMPT, QUIZ_GENERATOR_PROMPT, SUMMARIZE_HISTORY_PROMPT, AI_TUTOR_PROMPT_PERSONALIZED, INTENT_EXTRACTOR_PROMPT, TOPIC_GENERATOR_PROMPT, GENERAL_FALLBACK_PROMPT
+from prompts import AI_TUTOR_PROMPT, QUIZ_GENERATOR_PROMPT, SUMMARIZE_HISTORY_PROMPT, AI_TUTOR_PROMPT_PERSONALIZED, INTENT_EXTRACTOR_PROMPT, TOPIC_GENERATOR_PROMPT, GENERAL_FALLBACK_PROMPT, SEARCH_QUERY_GENERATION_PROMPT
 from llm import LLM
 import os
 from utility.custom_libs import CustomMongoDBChatMessageHistory
 from langchain_core.runnables import RunnableConfig
+from utility.web_search import get_unique_image_urls
 
 llm = LLM().get_llm()
 
@@ -21,6 +22,11 @@ class AgentState(TypedDict, total=False):
     messages: list[BaseMessage]
     stage: str
     intent: str
+
+def get_image_urls(content: str):
+    search_query = SEARCH_QUERY_GENERATION_PROMPT.invoke({"text": content})
+    search_query_content = llm.invoke(search_query).content.strip()
+    return get_unique_image_urls(search_query_content, num_results=10)
 
 def get_chat_history(session_id: str):
     return CustomMongoDBChatMessageHistory(
@@ -79,8 +85,8 @@ def answering_node(state: AgentState, config: RunnableConfig):
         question = AI_TUTOR_PROMPT.invoke({"history": history_msgs[-10:], "query": state.get("question")})
 
     content = llm.invoke(question).content.strip()
-    chat_history.add_user_message(state.get("question"))
-    chat_history.add_ai_message(content)
+    # chat_history.add_user_message(state.get("question"))
+    # chat_history.add_ai_message(content)
     state["full_explanation"] = content
     state["stage"] = "quiz_generation"
     return state
@@ -89,9 +95,11 @@ def quiz_generation_node(state: AgentState, config: RunnableConfig):
     if not state.get("full_explanation"):
         print("No full explanation found, summarizing history instead.")
         chat_history = get_chat_history(config["configurable"]["session_id"])
+        
         state["messages"] = list(chat_history.messages) + state.get("messages", [])
+        
         history_msgs = ""
-        for msg in state.get("messages", [])[:-10:]:
+        for msg in state.get("messages", [])[-10:]:
             if isinstance(msg, HumanMessage):
                 history_msgs += f"User: {msg.content}\n"
             elif isinstance(msg, AIMessage):

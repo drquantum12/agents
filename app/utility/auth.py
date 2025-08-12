@@ -36,20 +36,19 @@ async def get_current_user_from_firebase_token(authorization: str = Header(...))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, 
             detail="Invalid authorization header format",
-            headers={"WWW-Authenticate": "Bearer"},
         )
     
     token = authorization.split(" ")[1]
     try:
         decoded_token = auth.verify_id_token(token)
         return decoded_token
-    except Exception as e:
+    except (auth.RevokedIdTokenError, auth.InvalidIdTokenError) as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, 
-            detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="Invalid or revoked token",
         ) 
     
+
 @auth_router.post("/create-user", response_model=dict)
 async def create_user(user: UserProfileCreate,
                       current_firebase_user: dict=Depends(get_current_user_from_firebase_token)):
@@ -69,7 +68,6 @@ async def create_user(user: UserProfileCreate,
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, 
             detail="User ID does not match the authenticated user",
-            headers={"WWW-Authenticate": "Bearer"},
         )
     
     user_data = UserSchema(
@@ -84,11 +82,10 @@ async def create_user(user: UserProfileCreate,
 
     try:
         mongodb_user_collection.insert_one(user_data)
-        resp = {
+        return {
             "message": "User created successfully",
-            "user": user_data
+            "userId" : user.userId
         }
-        return resp
 
     except Exception as e:
         print(f"Error during user creation: {e}")
@@ -107,7 +104,6 @@ async def login(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, 
             detail="User ID does not match the authenticated user",
-            headers={"WWW-Authenticate": "Bearer"},
         )
     user_doc = mongodb_user_collection.find_one(
         {"_id": payload.userId},
@@ -117,13 +113,11 @@ async def login(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 
             detail="User profile not found, Please complete registration",
-            headers={"WWW-Authenticate": "Bearer"},
         )
-    resp = {
-        "message": "Login successful",
-        "user": user_doc
+    return {
+        "message" : "Login successful",
+        "userId": user_doc["_id"]
     }
-    return resp
 
 
 
@@ -139,7 +133,6 @@ async def google_sign_in(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, 
             detail="User ID does not match the authenticated user",
-            headers={"WWW-Authenticate": "Bearer"},
         )
     
     user_id = current_firebase_user.get("uid")
@@ -148,7 +141,6 @@ async def google_sign_in(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, 
             detail="User ID not found in token",
-            headers={"WWW-Authenticate": "Bearer"},
         )
     
     # Check if user exists in Firestore else create a new user profile
@@ -165,15 +157,29 @@ async def google_sign_in(
         quiz_ids=[]
     )
         mongodb_user_collection.insert_one(user_doc)
-    resp = {
-        "message": "Sign-in successful",
-        "user": {
-            key: value for key, value in user_doc.items() if key != "quiz_ids"  # Exclude quiz_ids from response
-        }
+    return {
+        "message": "User logged in successfully",
+        "userId": user_id
     }
-    return resp
 
-# get user profile
+@auth_router.post("/logout")
+async def logout(
+    decoded_token: dict = Depends(get_current_user_from_firebase_token)):
+    """
+    This endpoint is used to log out a user.
+    It requires a valid Firebase ID token in the Authorization header.
+    """
+    try:
+        auth.revoke_refresh_tokens(decoded_token["uid"])
+        return {"message": "User logged out successfully"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail="Failed to revoke refresh tokens",
+        )
+
+
+# Get user profile
 @auth_router.get("/user/{userId}")
 async def get_user_profile(
     userId: str,
@@ -207,6 +213,7 @@ async def get_user_profile(
     return resp
 
 
+
 @auth_router.patch("/user/{userId}")
 async def update_user_profile(
     userId: str,
@@ -221,7 +228,6 @@ async def update_user_profile(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, 
             detail="User ID does not match the authenticated user",
-            headers={"WWW-Authenticate": "Bearer"},
         )
     
     update_data = user.model_dump(exclude_none=True)

@@ -229,3 +229,20 @@ TOPIC_GENERATOR_PROMPT = ChatPromptTemplate.from_messages([
     ("assistant", "Einstein's Theory of Relativity Explained Simply"),
     ("human", "{text}")
 ])
+
+SEARCH_QUERY_GENERATION_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", """
+Using the provided explanation by user, create a highly specific, image-focused search query that will retrieve the most relevant educational images or diagrams to help a student visually understand the explanation. 
+
+The query should:
+- Focus on the key concept or example explained.
+- Include words like “diagram”, “illustration”, “labeled”, “educational”, or “visual” where relevant.
+- Avoid vague terms. Be concise but descriptive.
+- Use classroom-style language if possible.
+"""),
+    ("human", "Newton’s third law states that for every action, there is an equal and opposite reaction. For example, when you push against a wall, the wall pushes back with equal force."),
+    ("assistant", "newton's third law action reaction educational diagram illustration"),
+    ("human", "Photosynthesis is the process by which green plants use sunlight to synthesize food from carbon dioxide and water. It occurs mainly in the chloroplasts of leaf cells."),
+    ("assistant", "photosynthesis process labeled diagram chloroplasts classroom biology visual"),
+    ("human", "{text}")
+])

@@ -14,7 +14,7 @@ VECTOR_DIMENSION = int(os.getenv('MILVUS_VECTOR_DIMENSION', 768))
 class VectorDB:
     def __init__(self):
         self.client = MilvusClient(uri=MILVUS_URI, token=MILVUS_TOKEN)
-        self.similarity_score_threshold = 0.7  # Example threshold for similarity score
+        self.similarity_score_threshold = 0.8  # Example threshold for similarity score
 
     def get_similar_documents(self, text, top_k=3):
         """
