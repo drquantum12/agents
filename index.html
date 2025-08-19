@@ -1,102 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Testing Firebase API</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Agent API</title>
 </head>
 <body>
-  <h1>Firebase Authentication Test</h1>
-  <button id="continueWithGoogle">Continue With Google</button>
-  <button id="createUserBtn">Create User</button>
-
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
-    import { getAuth, GoogleAuthProvider, signInWithPopup, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
-    import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-analytics.js";
-
-    const firebaseConfig = {
-    apiKey: "AIzaSyDMjjE5sKtmM1NaWAEAZCtvrRV-eimkwPE",
-    authDomain: "neurosattva-9a907.firebaseapp.com",
-    projectId: "neurosattva-9a907",
-    storageBucket: "neurosattva-9a907.firebasestorage.app",
-    messagingSenderId: "1032830713659",
-    appId: "1:1032830713659:web:b254f8c1a66bb67c8cc11e",
-    measurementId: "G-7QL8JNPWD9"
-  };
-
-    const app = initializeApp(firebaseConfig);
-    const analytics = getAnalytics(app);
-    const auth = getAuth(app);
-    const provider = new GoogleAuthProvider();
-
-    document.getElementById("continueWithGoogle").addEventListener("click", async () => {
-      try {
-        const result = await signInWithPopup(auth, provider);
-        const credential = GoogleAuthProvider.credentialFromResult(result);
-        const user = result.user;
-        const firebaseIdToken = await user.getIdToken();
-        // console.log("firebaseIdToken:", firebaseIdToken);
-        const response = await fetch("http://localhost:8000/api/v1/auth/continue-with-google", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer " + firebaseIdToken
-          },
-          body: JSON.stringify({
-            user_id: user.uid
-          })
-        });
-        if (response.ok) {
-          const data = await response.json();
-          console.log("Sign-in successful:", data);
-        } else {
-          console.error("Sign-in failed:", response.statusText);
-        }
-      } catch (error) {
-        console.error("Error signing in:", error);
-      }
-    });
-
-    document.getElementById("createUserBtn").addEventListener("click", async () => {
-      try {
-        const name = prompt("Enter name:");
-        const email = prompt("Enter email:");
-        const password = prompt("Enter password:");
-        if (name && email && password) {
-            
-          const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-
-          const user_data = {
-            user_id: userCredential.user.uid,
-            name: name,
-            email: email,
-            photo_url: userCredential.user.photoURL ? userCredential.user.photoURL : null,
-          };
-          const firebaseIdToken = await userCredential.user.getIdToken();
-          console.log("Firebase ID Token:", firebaseIdToken);
-          console.log("User data:", user_data);
-
-          fetch("http://localhost:8000/api/v1/auth/create-user", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": "Bearer " + firebaseIdToken
-            },
-            body: JSON.stringify({
-              user_id: userCredential.user.uid,
-              name: name,
-              email: email,
-              photo_url: userCredential.user.photoURL? userCredential.user.photoURL : "",
-            })
-          });
-        } else {
-          alert("Email and password are required.");
-        }
-      } catch (error) {
-        console.error("Error creating user:", error);
-      }
-    });
-  </script>
+    <h1>Welcome to the Teacher Agent API</h1>
+    <div>
+      <img height="400" src="https://science.nasa.gov/wp-content/uploads/2023/08/hubble-spectroscopy-spectroscope-aug2023.png" alt="Hubble Spectroscopy">
+      <img height="400" src="http://127.0.0.1:8000/api/v1/image/proxy-image?url=https://science.nasa.gov/wp-content/uploads/2023/08/hubble-spectroscopy-spectroscope-aug2023.png" alt="Hubble Spectroscopy">
+      <!-- <img src="https://spark.iop.org/sites/default/files/media/images/147_stories_from_physics_astronomy_and_space-23.png" alt="Stories from physics: Astronomy and space | IOPSpark"> -->
+    </div>
+    <p>This API provides various endpoints for chat, quizzes, analytics, and image processing.</p>
 </body>
 </html>
