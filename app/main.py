@@ -6,8 +6,8 @@ from firebase_admin import credentials
 from utility.auth import auth_router
 from utility.chat import chat_router
 from utility.quizzes import quiz_router
+from utility.image_utility import image_router
 from analytics.user_performance_metrics import analytics_router
-
 
 app = FastAPI()
 
@@ -27,7 +27,7 @@ app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(chat_router, prefix="/api/v1/chat", tags=["chat"])
 app.include_router(quiz_router, prefix="/api/v1/quiz", tags=["quiz"])
 app.include_router(analytics_router, prefix="/api/v1/analytics", tags=["analytics"])
-
+app.include_router(image_router, prefix="/api/v1/image", tags=["image"])
 
 @app.get("/")
 async def root():

@@ -56,6 +56,9 @@ def chat(message: MessageSchema, current_user: dict = Depends(get_current_user_f
         })
 
         return {"message": "New conversation created", "conversation_id": new_conversation_id, "topic": conversation_topic}
+
+        
+    
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -91,7 +94,8 @@ def get_conversations(limit: int = Query(10, ge=1),
 
 # implementing lazy loading using limit and offset
 @chat_router.get("/conversation/{conversation_id}")
-def get_paginated_conversation(conversation_id: str, limit: int = 10, offset: int = 0, current_user: dict = Depends(get_current_user_from_firebase_token)):
+def get_paginated_conversation(conversation_id: str, limit: int = 10, offset: int = 0, current_user: dict = Depends(get_current_user_from_firebase_token)
+                                ):
     # Step 1: Get count only
     """
     Example response:
@@ -128,7 +132,7 @@ def get_paginated_conversation(conversation_id: str, limit: int = 10, offset: in
         messages.reverse()  # Reverse to get latest messages first
 
         return {
-            "conversation_id": conversation_id,
+            "id": conversation_id,
             "messages": messages,
             "total_messages": total_messages
         }
